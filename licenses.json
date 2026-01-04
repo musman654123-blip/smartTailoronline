@@ -1,0 +1,12 @@
+[
+    {
+        "license": "TAILOR-001-2026",
+        "name": "Tailor One",
+        "status": "active"
+    },
+    {
+        "license": "TAILOR-002-2026",
+        "name": "Tailor Two",
+        "status": "blocked"
+    }
+]
