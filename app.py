@@ -160,6 +160,7 @@ def admin_block(code):
     for lic in licenses:
         if lic["license"] == code:
             lic["status"] = "blocked"
+            lic["last_login"] = ""  # Clear last login if blocked
     save_data(LICENSE_FILE, licenses)
     return redirect("/admin")
 
