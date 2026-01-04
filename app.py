@@ -1,6 +1,7 @@
 from flask import Flask, request, redirect
 import json
 import os
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -27,12 +28,20 @@ def check_license(code):
             return lic["status"] == "active"
     return False
 
+def update_last_login(code):
+    licenses = load_data(LICENSE_FILE)
+    for lic in licenses:
+        if lic["license"] == code:
+            lic["last_login"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    save_data(LICENSE_FILE, licenses)
+
 # ---------------------- TAILOR LICENSE PAGE ----------------------
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":
         license_code = request.form.get("license").strip()
         if check_license(license_code):
+            update_last_login(license_code)
             return redirect("/main")
         else:
             return "<h2>Access Denied ❌ Invalid or Blocked License</h2><br><a href='/'>Back</a>"
@@ -108,15 +117,17 @@ def list_customers():
     html += "<br><a href='/main'><button style='width:100%;padding:10px;background-color:green;color:white;border:none;border-radius:5px;'>Back</button></a></div>"
     return html
 
-# ---------------------- ADMIN BUTTON ROUTES ----------------------
+# ---------------------- ADMIN DASHBOARD ----------------------
 @app.route("/admin")
 def admin_dashboard():
     licenses = load_data(LICENSE_FILE)
-    html = "<div style='max-width:700px;margin:auto;text-align:center;'><h2>Admin Dashboard - Tailor Licenses</h2>"
+    active_count = sum(1 for l in licenses if l["status"]=="active" and l.get("last_login"))
+    html = "<div style='max-width:800px;margin:auto;text-align:center;'><h2>Admin Dashboard - Tailor Licenses</h2>"
+    html += f"<h3>Active Tailors Currently Logged In: {active_count}</h3>"
     html += "<table border=1 style='border-collapse:collapse;width:100%;margin:auto;'>"
-    html += "<tr><th>License</th><th>Name</th><th>Status</th><th>Actions</th></tr>"
+    html += "<tr><th>License</th><th>Name</th><th>Status</th><th>Last Login</th><th>Actions</th></tr>"
     for lic in licenses:
-        html += f"<tr><td>{lic['license']}</td><td>{lic['name']}</td><td>{lic['status']}</td>"
+        html += f"<tr><td>{lic['license']}</td><td>{lic['name']}</td><td>{lic['status']}</td><td>{lic.get('last_login','')}</td>"
         html += "<td>"
         html += f"<a href='/admin/activate/{lic['license']}'>Activate</a> | "
         html += f"<a href='/admin/block/{lic['license']}'>Block</a> | "
@@ -164,7 +175,7 @@ def admin_add():
     licenses = load_data(LICENSE_FILE)
     code = request.form.get("license_code")
     name = request.form.get("name")
-    licenses.append({"license": code, "name": name, "status": "active"})
+    licenses.append({"license": code, "name": name, "status": "active", "last_login": ""})
     save_data(LICENSE_FILE, licenses)
     return redirect("/admin")
 

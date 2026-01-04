@@ -1,12 +1,4 @@
 [
-    {
-        "license": "TAILOR-001-2026",
-        "name": "Tailor One",
-        "status": "active"
-    },
-    {
-        "license": "TAILOR-002-2026",
-        "name": "Tailor Two",
-        "status": "blocked"
-    }
+  {"license": "TAILOR-001-2026", "name": "Tailor One", "status": "active", "last_login": "2026-01-04 21:30"},
+  {"license": "TAILOR-002-2026", "name": "Tailor Two", "status": "blocked", "last_login": ""}
 ]
