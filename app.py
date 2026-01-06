@@ -1,10 +1,8 @@
-# ---------------------- SMART TAILOR COMPLETE APP ----------------------
-ADMIN_PASSWORD = "admin123"
-
 from flask import Flask, request, redirect, session
 import sqlite3, os, shutil
 from datetime import datetime
 
+ADMIN_PASSWORD = "admin123"
 app = Flask(__name__)
 app.secret_key = "smart-tailor-secret"
 DB_FILE = "data.db"
@@ -36,24 +34,26 @@ def init_db():
         ghara TEXT,
         amount TEXT,
         created_at TEXT
-    )""")
+    )
+    """)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS licenses (
         license TEXT PRIMARY KEY,
         name TEXT,
         status TEXT,
         last_login TEXT
-    )""")
+    )
+    """)
     conn.commit()
     conn.close()
+
 init_db()
 
 # ---------------- BACKUP ----------------
 def backup_db():
     if not os.path.exists("backup"):
         os.mkdir("backup")
-    filename = f"backup/data_{datetime.now().strftime('%Y%m%d_%H%M')}.db"
-    shutil.copy(DB_FILE, filename)
+    shutil.copy(DB_FILE, f"backup/data_{datetime.now().strftime('%Y%m%d_%H%M')}.db")
 
 # ---------------- LICENSE ----------------
 def check_license(code):
@@ -66,28 +66,27 @@ def check_license(code):
 
 def update_last_login(code):
     conn = get_db()
-    conn.execute("UPDATE licenses SET last_login=? WHERE license=?",
-                 (datetime.now().strftime("%Y-%m-%d %H:%M"), code))
+    conn.execute("UPDATE licenses SET last_login=? WHERE license=?", (datetime.now().strftime("%Y-%m-%d %H:%M"), code))
     conn.commit()
     conn.close()
 
 # ---------------- LOGIN (TAILOR) ----------------
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET","POST"])
 def login():
-    if request.method == "POST":
+    if request.method=="POST":
         code = request.form.get("license")
         lic = check_license(code)
         if lic:
             session["license"] = code
             update_last_login(code)
             return redirect("/main")
-        return "<h3>Invalid / Blocked License</h3>"
+        return "<h3>Invalid or Blocked License</h3>"
     return """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <h2>Smart Tailor Login</h2>
     <form method="post">
-      <input name="license" placeholder="Enter License" required><br><br>
-      <button>Login</button>
+        <input name="license" placeholder="Enter License" required><br><br>
+        <button>Login</button>
     </form>
     """
 
@@ -110,14 +109,13 @@ def main():
       Batton: <input name="batton"><br><br>
       Packet: <input name="packet"><br><br>
       Zip: <input name="zip"><br><br>
-      Shalwar Length: <input name="shalwar"><br><br>
+      Shalwar: <input name="shalwar"><br><br>
       Collar: <input name="collar"><br><br>
       Ghara: <input name="ghara"><br><br>
       Amount: <input name="amount"><br><br>
       <button style="width:100%;padding:10px;">Save Customer</button>
     </form>
-    <br>
-    <a href="/list">📋 View Customers</a><br>
+    <br><a href="/list">📋 View Customers</a><br>
     <a href="/logout">🚪 Logout</a>
     """
 
@@ -128,15 +126,15 @@ def add():
         return redirect("/")
     conn = get_db()
     conn.execute("""
-        INSERT INTO customers
-        (name, mobile, length, chest, waist, shoulder, poncha, batton, packet, zip, shalwar, collar, ghara, amount, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO customers
+    (name,mobile,length,chest,waist,shoulder,poncha,batton,packet,zip,shalwar,collar,ghara,amount,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         request.form["name"],
         request.form["mobile"],
-        request.form["length"],
-        request.form["chest"],
-        request.form["waist"],
+        request.form.get("length"),
+        request.form.get("chest"),
+        request.form.get("waist"),
         request.form.get("shoulder"),
         request.form.get("poncha"),
         request.form.get("batton"),
@@ -150,7 +148,7 @@ def add():
     ))
     conn.commit()
     conn.close()
-    backup_db()  # Auto backup after every add
+    backup_db()
     return redirect("/main")
 
 # ---------------- VIEW CUSTOMERS ----------------
@@ -184,9 +182,9 @@ def logout():
     return redirect("/")
 
 # ---------------- ADMIN LOGIN ----------------
-@app.route("/admin-login", methods=["GET", "POST"])
+@app.route("/admin-login", methods=["GET","POST"])
 def admin_login():
-    if request.method == "POST":
+    if request.method=="POST":
         if request.form.get("password") == ADMIN_PASSWORD:
             session["admin"] = True
             return redirect("/admin")
@@ -211,24 +209,12 @@ def admin():
     active_licenses = conn.execute("SELECT COUNT(*) FROM licenses WHERE status='active'").fetchone()[0]
     blocked_licenses = conn.execute("SELECT COUNT(*) FROM licenses WHERE status='blocked'").fetchone()[0]
     conn.close()
-
     html = "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-    html += "<h2>Admin Dashboard</h2>"
-    html += f"<p>Total Customers: {total_customers}<br>Active Licenses: {active_licenses}<br>Blocked Licenses: {blocked_licenses}</p>"
+    html += f"<h2>Admin Dashboard</h2><p>Total Customers: {total_customers}<br>Active Licenses: {active_licenses}<br>Blocked Licenses: {blocked_licenses}</p>"
     html += "<table border=1 cellpadding=5><tr><th>License</th><th>Name</th><th>Status</th><th>Last Login</th><th>Action</th></tr>"
     for l in licenses:
-        html += f"""
-        <tr>
-          <td>{l['license']}</td>
-          <td>{l['name']}</td>
-          <td>{l['status']}</td>
-          <td>{l['last_login'] or ''}</td>
-          <td>
-            <a href='/admin/activate/{l['license']}'>Activate</a> |
-            <a href='/admin/block/{l['license']}'>Block</a>
-          </td>
-        </tr>
-        """
+        html += f"<tr><td>{l['license']}</td><td>{l['name']}</td><td>{l['status']}</td><td>{l['last_login'] or ''}</td>"
+        html += f"<td><a href='/admin/activate/{l['license']}'>Activate</a> | <a href='/admin/block/{l['license']}'>Block</a></td></tr>"
     html += "</table><br>"
     html += """
     <h3>Add License</h3>
@@ -244,8 +230,7 @@ def admin():
 @app.route("/admin/add", methods=["POST"])
 def admin_add():
     conn = get_db()
-    conn.execute("INSERT OR REPLACE INTO licenses VALUES (?, ?, 'active', '')",
-                 (request.form["license"], request.form["name"]))
+    conn.execute("INSERT OR REPLACE INTO licenses VALUES (?,?, 'active','')", (request.form["license"], request.form["name"]))
     conn.commit()
     conn.close()
     return redirect("/admin")
@@ -268,4 +253,4 @@ def admin_activate(code):
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
