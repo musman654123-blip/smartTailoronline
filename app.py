@@ -1,186 +1,214 @@
 from flask import Flask, request, redirect
-import json
+import sqlite3
 import os
 from datetime import datetime
 
 app = Flask(__name__)
+DB_FILE = "data.db"
 
-CUSTOMER_FILE = "customers.json"
-LICENSE_FILE = "licenses.json"
-ADMIN_PASSWORD = "smart123"
+# ---------------- DATABASE SETUP ----------------
+def get_db():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-# ---------------------- DATA HANDLING ----------------------
-def load_data(file):
-    if os.path.exists(file):
-        with open(file, "r") as f:
-            return json.load(f)
-    return []
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
 
-def save_data(file, data):
-    with open(file, "w") as f:
-        json.dump(data, f, indent=2)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        mobile TEXT,
+        length TEXT,
+        chest TEXT,
+        waist TEXT,
+        shoulder TEXT,
+        poncha TEXT,
+        batton TEXT,
+        packet TEXT,
+        zip TEXT,
+        shalwar TEXT,
+        collar TEXT,
+        ghara TEXT,
+        amount TEXT,
+        created_at TEXT
+    )
+    """)
 
-# ---------------------- LICENSE CHECK ----------------------
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS licenses (
+        license TEXT PRIMARY KEY,
+        name TEXT,
+        status TEXT,
+        last_login TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ---------------- LICENSE CHECK ----------------
 def check_license(code):
-    licenses = load_data(LICENSE_FILE)
-    for lic in licenses:
-        if lic["license"] == code:
-            return lic["status"] == "active"
-    return False
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM licenses WHERE license=? AND status='active'", (code,))
+    row = cur.fetchone()
+    conn.close()
+    return row is not None
 
 def update_last_login(code):
-    licenses = load_data(LICENSE_FILE)
-    for lic in licenses:
-        if lic["license"] == code:
-            lic["last_login"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-    save_data(LICENSE_FILE, licenses)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE licenses SET last_login=? WHERE license=?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M"), code)
+    )
+    conn.commit()
+    conn.close()
 
-# ---------------------- TAILOR LICENSE PAGE ----------------------
+# ---------------- LICENSE PAGE ----------------
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":
-        license_code = request.form.get("license").strip()
-        if check_license(license_code):
-            update_last_login(license_code)
+        code = request.form.get("license").strip()
+        if check_license(code):
+            update_last_login(code)
             return redirect("/main")
-        else:
-            return "<h2>Access Denied ❌ Invalid or Blocked License</h2><br><a href='/'>Back</a>"
+        return "<h3>Invalid / Blocked License</h3>"
     return """
-    <div style="max-width:400px;margin:auto;text-align:center;">
-    <h2>Enter Your License Code</h2>
+    <h2>Enter License</h2>
     <form method="post">
-        <input name="license" type="text" placeholder="License Code" required style="width:100%;padding:10px;margin:10px 0;"><br>
-        <button type="submit" style="width:100%;padding:10px;background-color:green;color:white;border:none;border-radius:5px;">Enter</button>
+      <input name="license" required>
+      <button>Enter</button>
     </form>
-    </div>
     """
 
-# ---------------------- MAIN CUSTOMER APP ----------------------
+# ---------------- MAIN APP ----------------
 @app.route("/main")
 def main_page():
     return """
-    <div style="max-width:500px;margin:auto;">
-    <h2 style="color:darkred;text-align:center;">Smart Tailor – Add Customer</h2>
+    <h2>Add Customer</h2>
     <form method="post" action="/add">
-        Name:<br><input name="name" required style="width:100%;padding:8px;margin:5px 0;"><br>
-        Mobile:<br><input name="mobile" required style="width:100%;padding:8px;margin:5px 0;"><br>
-        Length:<br><input name="length" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Chest:<br><input name="chest" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Waist:<br><input name="waist" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Shoulder:<br><input name="shoulder" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Poncha:<br><input name="poncha" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Batton:<br><input name="batton" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Packet:<br><input name="packet" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Zip:<br><input name="zip" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Shalwar Length:<br><input name="shalwar" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Collar:<br><input name="collar" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Ghara:<br><input name="ghara" style="width:100%;padding:8px;margin:5px 0;"><br>
-        Amount:<br><input name="amount" style="width:100%;padding:8px;margin:5px 0;"><br>
-        <button type="submit" style="width:100%;padding:10px;background-color:green;color:white;border:none;border-radius:5px;margin-top:10px;">Save Customer</button>
+      Name:<input name="name"><br>
+      Mobile:<input name="mobile"><br>
+      Length:<input name="length"><br>
+      Chest:<input name="chest"><br>
+      Waist:<input name="waist"><br>
+      <button>Save</button>
     </form>
-    <br>
-    <a href='/search'><button style="width:48%;padding:10px;background-color:blue;color:white;border:none;border-radius:5px;margin:1%;">Search Customer</button></a>
-    <a href='/list'><button style="width:48%;padding:10px;background-color:orange;color:white;border:none;border-radius:5px;margin:1%;">View All Customers</button></a>
-    </div>
+    <a href="/list">View Customers</a>
     """
 
-# ---------------------- ADD CUSTOMER ----------------------
+# ---------------- ADD CUSTOMER ----------------
 @app.route("/add", methods=["POST"])
 def add():
-    data = load_data(CUSTOMER_FILE)
-    data.append(dict(request.form))
-    save_data(CUSTOMER_FILE, data)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+    INSERT INTO customers
+    (name, mobile, length, chest, waist, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        request.form.get("name"),
+        request.form.get("mobile"),
+        request.form.get("length"),
+        request.form.get("chest"),
+        request.form.get("waist"),
+        datetime.now().strftime("%Y-%m-%d %H:%M")
+    ))
+    conn.commit()
+    conn.close()
     return redirect("/main")
 
-# ---------------------- SEARCH ----------------------
-@app.route("/search", methods=["GET", "POST"])
-def search():
-    html = "<div style='max-width:500px;margin:auto;'><h2>Search Customer</h2><form method='post'>"
-    html += "<input name='query' placeholder='Name or Mobile' required style='width:100%;padding:8px;margin:5px 0;'>"
-    html += "<button type='submit' style='width:100%;padding:10px;background-color:blue;color:white;border:none;border-radius:5px;margin-top:5px;'>Search</button></form>"
-    if request.method=="POST":
-        data = load_data(CUSTOMER_FILE)
-        query = request.form["query"].lower()
-        found = [c for c in data if query in c.get("mobile","").lower() or query in c.get("name","").lower()]
-        if found:
-            for c in found: html+=f"<p>{c}</p>"
-        else: html+="<p>No customer found</p>"
-    html += "<br><a href='/main'><button style='width:100%;padding:10px;background-color:green;color:white;border:none;border-radius:5px;'>Back</button></a></div>"
-    return html
-
-# ---------------------- VIEW ALL ----------------------
+# ---------------- VIEW CUSTOMERS ----------------
 @app.route("/list")
 def list_customers():
-    data = load_data(CUSTOMER_FILE)
-    html = "<div style='max-width:500px;margin:auto;'><h2>All Customers</h2>"
-    for c in data: html+=f"<p>{c}</p>"
-    html += "<br><a href='/main'><button style='width:100%;padding:10px;background-color:green;color:white;border:none;border-radius:5px;'>Back</button></a></div>"
-    return html
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM customers ORDER BY id DESC")
+    rows = cur.fetchall()
+    conn.close()
 
-# ---------------------- ADMIN DASHBOARD ----------------------
+    html = "<h2>All Customers</h2>"
+    for r in rows:
+        html += f"<p>{r['name']} - {r['mobile']} - {r['created_at']}</p>"
+    return html
+# ---------------- ADMIN DASHBOARD ----------------
 @app.route("/admin")
 def admin_dashboard():
-    licenses = load_data(LICENSE_FILE)
-    active_count = sum(1 for l in licenses if l["status"]=="active" and l.get("last_login"))
-    html = "<div style='max-width:800px;margin:auto;text-align:center;'><h2>Admin Dashboard - Tailor Licenses</h2>"
-    html += f"<h3>Active Tailors Currently Logged In: {active_count}</h3>"
-    html += "<table border=1 style='border-collapse:collapse;width:100%;margin:auto;'>"
-    html += "<tr><th>License</th><th>Name</th><th>Status</th><th>Last Login</th><th>Actions</th></tr>"
-    for lic in licenses:
-        html += f"<tr><td>{lic['license']}</td><td>{lic['name']}</td><td>{lic['status']}</td><td>{lic.get('last_login','')}</td>"
-        html += "<td>"
-        html += f"<a href='/admin/activate/{lic['license']}'>Activate</a> | "
-        html += f"<a href='/admin/block/{lic['license']}'>Block</a> | "
-        html += f"<a href='/admin/delete/{lic['license']}'>Delete</a>"
-        html += "</td></tr>"
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM licenses")
+    licenses = cur.fetchall()
+    conn.close()
+
+    html = "<h2>Admin Dashboard</h2>"
+    html += "<table border='1' cellpadding='5'>"
+    html += "<tr><th>License</th><th>Name</th><th>Status</th><th>Last Login</th><th>Action</th></tr>"
+
+    for l in licenses:
+        html += f"""
+        <tr>
+          <td>{l['license']}</td>
+          <td>{l['name']}</td>
+          <td>{l['status']}</td>
+          <td>{l['last_login'] or ''}</td>
+          <td>
+            <a href="/admin/activate/{l['license']}">Activate</a> |
+            <a href="/admin/block/{l['license']}">Block</a>
+          </td>
+        </tr>
+        """
+
     html += "</table><br>"
+
     html += """
     <h3>Add New License</h3>
-    <form method='post' action='/admin/add'>
-        License Code: <input name='license_code' required>
-        Tailor Name: <input name='name' required>
-        <button type='submit'>Add License</button>
+    <form method="post" action="/admin/add">
+      License: <input name="license"><br>
+      Name: <input name="name"><br>
+      <button>Add</button>
     </form>
-    </div>
     """
     return html
 
-@app.route("/admin/activate/<code>")
-def admin_activate(code):
-    licenses = load_data(LICENSE_FILE)
-    for lic in licenses:
-        if lic["license"] == code:
-            lic["status"] = "active"
-    save_data(LICENSE_FILE, licenses)
-    return redirect("/admin")
-
-@app.route("/admin/block/<code>")
-def admin_block(code):
-    licenses = load_data(LICENSE_FILE)
-    for lic in licenses:
-        if lic["license"] == code:
-            lic["status"] = "blocked"
-            lic["last_login"] = ""  # Clear last login if blocked
-    save_data(LICENSE_FILE, licenses)
-    return redirect("/admin")
-
-@app.route("/admin/delete/<code>")
-def admin_delete(code):
-    licenses = load_data(LICENSE_FILE)
-    licenses = [lic for lic in licenses if lic["license"] != code]
-    save_data(LICENSE_FILE, licenses)
-    return redirect("/admin")
 
 @app.route("/admin/add", methods=["POST"])
 def admin_add():
-    licenses = load_data(LICENSE_FILE)
-    code = request.form.get("license_code")
-    name = request.form.get("name")
-    licenses.append({"license": code, "name": name, "status": "active", "last_login": ""})
-    save_data(LICENSE_FILE, licenses)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT OR REPLACE INTO licenses (license, name, status, last_login) VALUES (?, ?, ?, ?)",
+        (request.form["license"], request.form["name"], "active", "")
+    )
+    conn.commit()
+    conn.close()
     return redirect("/admin")
 
-# ---------------------- RUN ----------------------
+
+@app.route("/admin/block/<code>")
+def admin_block(code):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE licenses SET status='blocked', last_login='' WHERE license=?", (code,))
+    conn.commit()
+    conn.close()
+    return redirect("/admin")
+
+
+@app.route("/admin/activate/<code>")
+def admin_activate(code):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE licenses SET status='active' WHERE license=?", (code,))
+    conn.commit()
+    conn.close()
+    return redirect("/admin")
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
