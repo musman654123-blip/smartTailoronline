@@ -1,12 +1,13 @@
 from flask import Flask, request, redirect, session
 import sqlite3, os, shutil
 from datetime import datetime
-
+import uuid
 ADMIN_PASSWORD = "admin123"
 app = Flask(__name__)
 app.secret_key = "smart-tailor-secret"
 DB_FILE = "data.db"
-
+def get_machine_id():
+    return str(uuid.getnode())
 # ---------------- DATABASE ----------------
 def get_db():
     conn = sqlite3.connect(DB_FILE)
@@ -38,11 +39,12 @@ def init_db():
     """)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS licenses (
-        license TEXT PRIMARY KEY,
-        name TEXT,
-        status TEXT,
-        last_login TEXT
-    )
+    license TEXT PRIMARY KEY,
+    name TEXT,
+    status TEXT,
+    machine_id TEXT,
+    last_login TEXT
+)
     """)
     conn.commit()
     conn.close()
@@ -57,12 +59,40 @@ def backup_db():
 
 # ---------------- LICENSE ----------------
 def check_license(code):
+    machine_id = get_machine_id()
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM licenses WHERE license=? AND status='active'", (code,))
-    row = cur.fetchone()
+
+    cur.execute("SELECT * FROM licenses WHERE license=?", (code,))
+    lic = cur.fetchone()
+
+    if not lic or lic["status"] != "active":
+        conn.close()
+        return "invalid"
+
+    # first time login → bind machine
+    if lic["machine_id"] is None or lic["machine_id"] == "":
+        cur.execute(
+            "UPDATE licenses SET machine_id=?, last_login=? WHERE license=?",
+            (machine_id, datetime.now().strftime("%Y-%m-%d %H:%M"), code)
+        )
+        conn.commit()
+        conn.close()
+        return "ok"
+
+    # already used on another system
+    if lic["machine_id"] != machine_id:
+        conn.close()
+        return "used_on_other_system"
+
+    # same system login
+    cur.execute(
+        "UPDATE licenses SET last_login=? WHERE license=?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M"), code)
+    )
+    conn.commit()
     conn.close()
-    return row
+    return "ok"
 
 def update_last_login(code):
     conn = get_db()
@@ -71,16 +101,19 @@ def update_last_login(code):
     conn.close()
 
 # ---------------- LOGIN (TAILOR) ----------------
+# ---------------- LOGIN (TAILOR) ----------------
 @app.route("/", methods=["GET","POST"])
 def login():
-    if request.method=="POST":
+    if request.method == "POST":
         code = request.form.get("license")
         lic = check_license(code)
         if lic:
             session["license"] = code
             update_last_login(code)
             return redirect("/main")
-        return "<h3>Invalid or Blocked License</h3>"
+        # ❌ Corrected line
+        return "<h3 style='color:red'>❌ Invalid or Blocked License</h3>"
+
     return """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <h2 style='text-align:center;color:green;'>Smart Tailor Login</h2>
@@ -262,6 +295,7 @@ def admin():
     html += "</table><br>"
     html += """
     <h3>Add License</h3>
+    <td>{l['machine_id'] or ''}</td>
     <form method='post' action='/admin/add'>
       License: <input name='license' required style='padding:5px;margin:5px;'><br>
       Name: <input name='name' required style='padding:5px;margin:5px;'><br>
